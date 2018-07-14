@@ -39,22 +39,34 @@ struct candidate {
 // @abi table votes
 struct vote {
     name voter;
-    name proxy;
+//    name proxy;
     int64_t weight;
     vector<name> candidates;
 
     account_name primary_key() const { return voter; }
 
+//    account_name by_proxy() const { return static_cast<uint64_t>(proxy); }
+
+    EOSLIB_SERIALIZE(vote, (voter)(weight)(candidates))
+};
+
+// @abi table proxyvote
+struct proxyvote {
+    name voter;
+    name proxy;
+
+    account_name primary_key() const { return voter; }
     account_name by_proxy() const { return static_cast<uint64_t>(proxy); }
 
-    EOSLIB_SERIALIZE(vote, (voter)(proxy)(weight)(candidates))
+    EOSLIB_SERIALIZE(proxyvote, (voter)(proxy))
+
 };
 
 typedef multi_index<N(candidates), candidate> candidates_table;
-
-typedef eosio::multi_index<N(votes), vote,
+typedef multi_index<N(votes), vote> votes_table;
+typedef multi_index<N(proxies), proxyvote,
         indexed_by<N(byproxy), const_mem_fun<vote, account_name, &vote::by_proxy> >
-> votes_table;
+> proxies_table;
 
 typedef singleton<N(config), contract_config> configscontainer;
 
@@ -65,6 +77,7 @@ private:
     candidates_table registered_candidates;
     votes_table votes_cast_by_members;
     regmembers reg_members;
+    proxies_table proxies;
 
 public:
 
@@ -72,6 +85,7 @@ public:
             : contract(self),
               registered_candidates(_self, _self),
               votes_cast_by_members(_self, _self),
+              proxies(_self, _self),
               config_singleton(_self, _self),
               reg_members(N(eosdactoken), N(eosdactoken)) {}
 
@@ -223,21 +237,26 @@ public:
         int64_t new_vote_weight = acquired_vote_weight(voter);
 
         // Find a vote that has been cast by this voter previously.
-        auto existingVote = votes_cast_by_members.find(voter);
-        if (existingVote != votes_cast_by_members.end()) {
-            clear_current_vote(*existingVote );
-
-            votes_cast_by_members.modify(existingVote, _self, [&](vote &v) {
-                v.candidates = newvotes;
-                v.proxy = name();
-                v.weight = new_vote_weight;
-            });
+        auto existingProxyVote = proxies.find(voter);
+        if (existingProxyVote != votes_cast_by_members.end()) {
+//                clear_current_vote(*existingProxyVote);
+            proxies.erase(existingProxyVote);
         } else {
-            votes_cast_by_members.emplace(_self, [&](vote &v) {
-                v.voter = voter;
-                v.candidates = newvotes;
-                v.weight = new_vote_weight;
-            });
+            auto existingVote = votes_cast_by_members.find(voter);
+            if (existingVote != votes_cast_by_members.end()) {
+                clear_current_vote(*existingVote);
+
+                votes_cast_by_members.modify(existingVote, _self, [&](vote &v) {
+                    v.candidates = newvotes;
+                    v.weight = new_vote_weight;
+                });
+            } else {
+                votes_cast_by_members.emplace(_self, [&](vote &v) {
+                    v.voter = voter;
+                    v.candidates = newvotes;
+                    v.weight = new_vote_weight;
+                });
+            }
         }
 
         for (const auto &newVote : newvotes) {
@@ -260,25 +279,26 @@ public:
         get_valid_member(voter);
         eosio_assert(voter != proxy, "Member cannot proxy vote for themselves.");
 
-
         int64_t new_vote_weight = acquired_vote_weight(voter);
 
         // // Find a vote that has been cast by this voter previously.
         auto existingVote = votes_cast_by_members.find(voter);
         if (existingVote != votes_cast_by_members.end()) {
             clear_current_vote(*existingVote);
-
-            votes_cast_by_members.modify(existingVote, _self, [&](vote &v) {
-                v.candidates.clear();
-                v.proxy = proxy;
-                v.weight = new_vote_weight;
-            });
+            votes_cast_by_members.erase(existingVote);
         } else {
-            votes_cast_by_members.emplace(_self, [&](vote &v) {
-                v.voter = voter;
-                v.proxy = proxy;
-                v.weight = new_vote_weight;
-            });
+            auto existingProxyVote = proxies.find(voter);
+            if (existingProxyVote != votes_cast_by_members.end()) {
+//                clear_current_vote(*existingProxyVote);
+                proxies.modify(existingProxyVote, _self, [&](proxyvote &v) {
+                    v.proxy = proxy;
+                });
+            } else {
+                proxies.emplace(_self, [&](proxyvote &v) {
+                    v.voter = voter;
+                    v.proxy = proxy;
+                });
+            }
         }
     }
 
