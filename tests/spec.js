@@ -8,7 +8,33 @@ eos = Eos({
 });
 
 describe('Basic mocha test', function () {
+    before("do something before everything", function(){
+        // console.print("hello");
+       // eos.transaction({
+       //     actions: [
+       //         {
+       //             account: 'eosdactoken',
+       //             name: 'transfer',
+       //             authorization: [
+       //                 {
+       //                     actor: eosdactoken,
+       //                     permission: 'active'
+       //                 }
+       //             ],
+       //             data: {
+       //                 from: 'inita',
+       //                 to: 'initb',
+       //                 quantity: '7.0000 SYS',
+       //                 memo: 'asdasdasd'
+       //             }
+       //         }
+       //     ]
+       //     }
+       // );
+    });
+
+
     it('should return a number', function () {
-        assert.equal("hellow".length, 6);
+        assert.equal({"animal": "cat", "other": "1"}, {"animal": "dog", "other": "3"});
     });
 });

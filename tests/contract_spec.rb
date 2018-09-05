@@ -28,19 +28,34 @@ CONTRACT_NAME = 'daccustodian'
 ACCOUNT_NAME = 'daccustodian'
 
 
-beforescript = <<~SHELL
+def seed_account(name, issue: nil, memberreg: nil, requestedpay: nil)
+  `cleos create account eosio #{name} #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+  `cleos push action eosdactoken issue '{ "to": "#{name}", "quantity": "#{issue}", "memo": "Initial amount."}' -p #{ACCOUNT_NAME}` unless issue.nil?
+  `cleos push action eosdactoken memberreg '{ "sender": "#{name}", "agreedterms": "#{memberreg}"}' -p #{name}` unless memberreg.nil?
+  `cleos push action daccustodian regcandidate '{ "cand": "#{name}", "bio": "any bio", "requestedpay": "#{requestedpay}"}' -p #{name}` unless requestedpay.nil?
+end
+
+beforeSuiteScript = <<~SHELL
    set -x
-   kill -INT `pgrep nodeos`
 
-  ttab 'nodeos --delete-all-blocks --verbose-http-errors'
-
-   # kill -INT `pgrep nodeos`
-    # nodeos --delete-all-blocks --verbose-http-errors &>/dev/null &
-    sleep 2
    cleos wallet unlock --password `cat ~/eosio-wallet/.pass`
    cleos wallet import --private-key #{CONTRACT_ACTIVE_PRIVATE_KEY}
    cleos wallet import --private-key #{TEST_ACTIVE_PRIVATE_KEY}
    cleos wallet import --private-key #{TEST_OWNER_PRIVATE_KEY}
+
+SHELL
+
+
+beforeAllscript = <<~SHELL
+   set -x
+   kill -INT `pgrep nodeos`
+
+   ttab -G 'nodeos --delete-all-blocks --verbose-http-errors'
+
+   # kill -INT `pgrep nodeos`
+    # nodeos --delete-all-blocks --verbose-http-errors &>/dev/null &
+    sleep 2
+
    cleos create account eosio #{ACCOUNT_NAME} #{CONTRACT_OWNER_PUBLIC_KEY} #{CONTRACT_ACTIVE_PUBLIC_KEY}
    cleos create account eosio eosdactoken #{CONTRACT_OWNER_PUBLIC_KEY} #{CONTRACT_ACTIVE_PUBLIC_KEY}
    cleos create account eosio eosio.token #{CONTRACT_OWNER_PUBLIC_KEY} #{CONTRACT_ACTIVE_PUBLIC_KEY}
@@ -78,57 +93,90 @@ beforescript = <<~SHELL
 SHELL
 
 
+def prepare_contract_data
+  puts('before configure initial accounts')
+  # configure accounts for eosdactoken
+  `cleos push action eosdactoken create '{ "issuer": "eosdactoken", "maximum_supply": "100000.0000 EOSDAC", "transfer_locked": false}' -p eosdactoken`
+  `cleos push action eosio.token create '{ "issuer": "eosio.token", "maximum_supply": "1000000.0000 EOS"}' -p eosio.token`
+  `cleos push action eosdactoken issue '{ "to": "eosdactoken", "quantity": "1000.0000 EOSDAC", "memo": "Initial amount of tokens for you."}' -p eosdactoken`
+  `cleos push action eosio.token issue '{ "to": "daccustodian", "quantity": "100000.0000 EOS", "memo": "Initial EOS amount."}' -p eosio.token`
+
+  # Ensure terms are registered in the token contract
+  `cleos push action eosdactoken newmemterms '{ "terms": "normallegalterms", "hash": "New Latest terms"}' -p eosdactoken`
+
+  #create users
+  seed_account("testreguser1", issue: "100.0000 EOSDAC", memberreg: "New Latest terms")
+  seed_account("testreguser2", issue: "100.0000 EOSDAC")
+  seed_account("testreguser3", issue: "100.0000 EOSDAC", memberreg: "")
+  seed_account("testreguser4", issue: "100.0000 EOSDAC", memberreg: "old terms")
+  seed_account("testreguser5", issue: "100.0000 EOSDAC", memberreg: "New Latest terms")
+  seed_account("testregusera", issue: "100.0000 EOSDAC", memberreg: "New Latest terms")
+end
+
+# def install_contracts()
+#   # exit() unless $? == 0
+#
+# end
+
 describe "eosdacelect" do
   before(:all) do
-    `#{beforescript}`
-    exit() unless $? == 0
+    `#{beforeSuiteScript}`
   end
+
+  # before(:all) do
+  #   puts "before all"
+  #   `#{beforeAllscript}`
+  #   exit() unless $? == 0
+  # end
 
   after(:all) do
     `sleep 2; kill \`pgrep nodeos\``
   end
 
-  describe "configure initial accounts" do
+  xcontext "configure initial accounts" do
     before(:all) do
-      # configure accounts for eosdactoken
-      `cleos push action eosdactoken create '{ "issuer": "eosdactoken", "maximum_supply": "100000.0000 EOSDAC", "transfer_locked": false}' -p eosdactoken`
-      `cleos push action eosio.token create '{ "issuer": "eosio.token", "maximum_supply": "1000000.0000 EOS"}' -p eosio.token`
-      `cleos push action eosdactoken issue '{ "to": "eosdactoken", "quantity": "1000.0000 EOSDAC", "memo": "Initial amount of tokens for you."}' -p eosdactoken`
-      `cleos push action eosio.token issue '{ "to": "daccustodian", "quantity": "100000.0000 EOS", "memo": "Initial EOS amount."}' -p eosio.token`
+      `#{beforeAllscript}`
+    end
 
-      #create users
-      `cleos create account eosio testreguser1 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
-      `cleos create account eosio testreguser2 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
-      `cleos create account eosio testreguser3 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
-      `cleos create account eosio testreguser4 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
-      `cleos create account eosio testreguser5 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
-      `cleos create account eosio testregusera #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+    before(:all) do
+      prepare_contract_data
+      # `cleos create account eosio testreguser1 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+      # `cleos create account eosio testreguser2 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+      # `cleos create account eosio testreguser3 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+      # `cleos create account eosio testreguser4 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+      # `cleos create account eosio testreguser5 #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
+      # `cleos create account eosio testregusera #{TEST_OWNER_PUBLIC_KEY} #{TEST_ACTIVE_PUBLIC_KEY}`
 
       # Issue tokens to the first accounts in the token contract
-      `cleos push action eosdactoken issue '{ "to": "testreguser1", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
-      `cleos push action eosdactoken issue '{ "to": "testreguser2", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
-      `cleos push action eosdactoken issue '{ "to": "testreguser3", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
-      `cleos push action eosdactoken issue '{ "to": "testreguser4", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
-      `cleos push action eosdactoken issue '{ "to": "testreguser5", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
-      `cleos push action eosdactoken issue '{ "to": "testregusera", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testreguser1", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testreguser2", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testreguser3", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testreguser4", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testreguser5", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
+      # `cleos push action eosdactoken issue '{ "to": "testregusera", "quantity": "100.0000 EOSDAC", "memo": "Initial amount."}' -p eosdactoken`
 
 
-      # Ensure terms are registered in the token contract
-      `cleos push action eosdactoken newmemterms '{ "terms": "normallegalterms", "hash": "New Latest terms"}' -p eosdactoken`
       # Add the founders to the memberreg table
-      `cleos push action eosdactoken memberreg '{ "sender": "testreguser1", "agreedterms": "New Latest terms"}' -p testreguser1`
+      # `cleos push action eosdactoken memberreg '{ "sender": "testreguser1", "agreedterms": "New Latest terms"}' -p testreguser1`
       # `cleos push action eosdactoken memberreg '{ "sender": "testreguser2", "agreedterms": "New Latest terms"}' -p testreguser2` # not registered
-      `cleos push action eosdactoken memberreg '{ "sender": "testreguser3", "agreedterms": ""}' -p testreguser3` # empty terms
-      `cleos push action eosdactoken memberreg '{ "sender": "testreguser4", "agreedterms": "oldterms"}' -p testreguser4`
-      `cleos push action eosdactoken memberreg '{ "sender": "testreguser5", "agreedterms": "New Latest terms"}' -p testreguser5`
-      `cleos push action eosdactoken memberreg '{ "sender": "testregusera", "agreedterms": "New Latest terms"}' -p testregusera`
+      # `cleos push action eosdactoken memberreg '{ "sender": "testreguser3", "agreedterms": ""}' -p testreguser3` # empty terms
+      # `cleos push action eosdactoken memberreg '{ "sender": "testreguser4", "agreedterms": "oldterms"}' -p testreguser4`
+      # `cleos push action eosdactoken memberreg '{ "sender": "testreguser5", "agreedterms": "New Latest terms"}' -p testreguser5`
+      # `cleos push action eosdactoken memberreg '{ "sender": "testregusera", "agreedterms": "New Latest terms"}' -p testregusera`
 
     end
 
     it {expect(true)} # to trigger the above before all to run this is needed.
+    puts ("here...")
   end
 
   describe "updateconfig" do
+    before(:all) do
+      `#{beforeAllscript}`
+      # exit() unless $? == 0
+      prepare_contract_data
+    end
+
     context "before being called with token contract will prevent other actions from working" do
       context "with valid and registered member" do
         command %(cleos push action daccustodian regcandidate '{ "cand": "testreguser1", "bio": "any bio", "requestedpay": "11.5000 EOS", "authaccount": "dacauthority", "auththresh": 3}' -p testreguser1), allow_error: true
@@ -150,14 +198,23 @@ describe "eosdacelect" do
     end
   end
 
+
   describe "regcandidate" do
+    before(:all) do
+      `#{beforeAllscript}`
+      prepare_contract_data
+
+      `cleos push action daccustodian updateconfig '{ "lockupasset": "10.0000 EOSDAC", "maxvotes": 5, "periodlength": 604800 , "numelected": 12, "tokcontr": "eosdactoken", "authaccount": "dacauthority", "auththresh": 3, "initial_vote_quorum_percent": 15, "vote_quorum_percent": 10, "auth_threshold_high": 11, "auth_threshold_mid": 50, "auth_threshold_low": 15}' -p daccustodian`
+    end
 
     context "with valid and registered member after transferring insufficient staked tokens" do
+
       before(:all) do
         `cleos push action eosdactoken transfer '{ "from": "testreguser1", "to": "daccustodian", "quantity": "5.0000 EOSDAC","memo":"daccustodian"}' -p testreguser1 -f`
         # Verify that a transaction with an invalid account memo still is insufficient funds.
         `cleos push action eosdactoken transfer '{ "from": "testreguser1", "to": "daccustodian", "quantity": "25.0000 EOSDAC","memo":"noncaccount"}' -p testreguser1 -f`
       end
+
       command %(cleos push action daccustodian regcandidate '{ "cand": "testreguser1", "bio": "any bio", "requestedpay": "11.5000 EOS"}' -p testreguser1), allow_error: true
       its(:stderr) {is_expected.to include('The amount staked is insufficient by: 50000 tokens.')}
       # its(:stderr) {is_expected.to include('no error')}
@@ -235,6 +292,7 @@ describe "eosdacelect" do
     end
   end
 
+=begin
   context "To ensure behaviours change after updateconfig" do
     context "updateconfigs with valid auth" do
       command %(cleos push action daccustodian updateconfig '{ "lockupasset": "23.0000 EOSDAC", "maxvotes": 5, "periodlength": 604800 , "numelected": 12, "tokcontr": "eosdactoken", "authaccount": "dacauthority", "auththresh": 3, "initial_vote_quorum_percent": 15, "vote_quorum_percent": 10, "auth_threshold_high": 11, "auth_threshold_mid": 50, "auth_threshold_low": 15}' -p daccustodian), allow_error: true
@@ -1679,6 +1737,9 @@ describe "eosdacelect" do
     command %(cleos get currency balance eosdactoken votedcust2 EOSDAC), allow_error: true
     its(:stdout) {is_expected.to include('79.0000 EOSDAC')}
   end
+
+=end
+
 end
 
 
