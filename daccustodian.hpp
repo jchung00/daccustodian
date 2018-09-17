@@ -192,7 +192,7 @@ public:
     }
 
     ~daccustodian() {
-        contract_state.set(_currentState, _self);
+//        contract_state.set(_currentState, _self);
     }
 
 
